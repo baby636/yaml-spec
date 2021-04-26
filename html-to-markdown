@@ -1,0 +1,131 @@
+#!/usr/bin/env coffee
+
+require 'ingy-prelude'
+Turndown = require 'turndown'
+Node = require 'domino/lib/Node'
+
+count = 0
+skip = [
+  'parentNode'
+  'ownerDocument'
+  '_nextSibling'
+  '_previousSibling'
+  '_attributeChangeHandlers'
+]
+
+getTexts = (node, a)->
+  if node.nodeType == Node.TEXT_NODE
+    a.push node._data
+  else if node.nodeName == 'BR'
+    a.push "\n  "
+  else
+    for n in node.childNodes
+      getTexts n, a
+
+getRowData = (tr)->
+  a = []
+  for td in tr.childNodes
+    a.push _.trim(td.textContent) || ' '
+  return a
+
+class HtmlToMarkdown
+  constructor: ->
+    @turndown = new Turndown
+      headingStyle: 'atx'
+      preformattedCode: true
+      codeBlockStyle: 'fenced'
+      linkStyle: 'inlined'
+      hr: '----'
+
+    for k, v of @constructor.rules
+      @turndown.addRule k, v
+
+  convert: (html)->
+    markdown = @turndown.turndown html
+      .replace(/.*\n.*\n/, '')
+      .replace(/^(###.*)\n\n</gm, '$1 <')
+      # .replace(/\ +$/gm, '')
+      .replace(/[“”]/g, '"')
+      .replace(/"""/g, "'\"'")
+
+  @rules:
+    informaltable:
+      filter: (n, o)->
+        n.nodeName == 'DIV' and
+        n.getAttribute('class') == 'informaltable'
+      replacement: (c, n)->
+        table = ''
+        for tr, i in n.getElementsByTagName 'TR'
+          a = getRowData tr
+          table += '| ' + a.join(' | ') + "\n"
+          if i == 0
+            table += '| ' + _.repeat('-- | ', a.length - 1) + "--\n"
+
+        return table + "\n"
+
+    production:
+      filter: (n, o)->
+        n.nodeName == 'TR' and
+        n.firstChild.getAttribute('class') == 'productioncounter'
+      replacement: (c, n)->
+        num = n.getElementsByClassName('productioncounter')[0].textContent
+        lhs = n.getElementsByClassName('productionlhs')[0].textContent
+        op  = n.getElementsByClassName('productionseperator')[0].textContent
+        a = []
+        getTexts(n.getElementsByClassName('productionrhs')[0], a)
+        rhs = a.join ''
+        if rhs.match /\ /
+          rhs = "\n  #{rhs}"
+
+        return """
+        ```
+        #{num} #{lhs} #{op} #{rhs}
+        ```\n\n
+        """
+
+    pre:
+      filter: 'pre'
+      replacement: (m, n)->
+        pre = m
+          .replace(/^\\/gm, '')
+          .replace(/\\([\[\]\*])/g, '$1')
+        return """
+        ```
+        #{pre}
+        ```\n\n
+        """
+
+    p:
+      filter: 'p'
+      replacement: (m, n)->
+        return "#{m.replace /\.\ (?=[A-Z])/g, ".\n"}\n\n"
+
+    code:
+      filter: 'code'
+      replacement: (m, n)->
+        if m.match /^<.*mailto/
+          return m
+        else
+          return "`#{m}`"
+
+    xxx:
+      filter: 'xxx'
+      replacement: (m, n)->
+        x = {}
+        for k, v of n
+          continue if k in skip
+          x[k] = v
+        www [m, x]
+        xxx 42 if count++ > 10
+        return
+
+
+main = (spec)->
+  to_markdown = new HtmlToMarkdown
+
+  html = file_read spec
+
+  out to_markdown.convert html
+
+
+main process.argv[2..]...

@@ -1,0 +1,11 @@
+title: YAML Spec as Markdown
+
+baseurl: ""
+url: http://0.0.0.0:4000
+host: 0.0.0.0
+port: 4000
+
+destination: ../docs
+markdown: kramdown
+theme: minima
+plugins: []
